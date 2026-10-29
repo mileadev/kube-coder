@@ -82,7 +82,19 @@ printf '%s' "$request" | python3 -c 'import json,sys; q=json.load(sys.stdin); pr
         self.assertEqual(self.request(body=b'{"jsonrpc":"2.0","method":"notifications/initialized"}')[0], 202)
 
     def test_reject_oversized_body(self):
-        self.assertEqual(self.request(body=b'a' * (1024 * 1024 + 1))[0], 413)
+        # Send the headers only: the gateway correctly rejects before accepting
+        # the oversized body and immediately closes the connection.
+        with socket.create_connection(('127.0.0.1', self.port), timeout=3) as sock:
+            sock.sendall((
+                'POST /mcp/dashboard HTTP/1.1\r\n'
+                'Host: 127.0.0.1\r\n'
+                'Content-Type: application/json\r\n'
+                'Authorization: Bearer ' + self.token + '\r\n'
+                'Content-Length: 1048577\r\n'
+                '\r\n'
+            ).encode())
+            status_line = sock.recv(4096).split(b'\r\n', 1)[0]
+        self.assertIn(b' 413 ', status_line)
 
 
 if __name__ == '__main__':
