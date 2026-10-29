@@ -211,7 +211,7 @@ class ProtocolVersionTests(unittest.TestCase):
 
     def test_2025_legacy_version_is_negotiated(self):
         self.assertEqual(
-            self._initialize({'protocolVersion': '2025-11-25'})['protocolVersion'],
+            mcp._handle_initialize({'protocolVersion': '2025-11-25'})['protocolVersion'],
             '2025-11-25')
 
     def test_unsupported_version_falls_back(self):
