@@ -224,6 +224,22 @@ class ProtocolVersionTests(unittest.TestCase):
                              mcp.PROTOCOL_VERSION)
 
 
+class ReadOnlyMcpTest(unittest.TestCase):
+    def test_mutating_memory_tools_are_hidden_and_rejected(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {'READONLY_MODE': 'true'}):
+            tools = mcp._handle_tools_list({})['tools']
+            names = {item['name'] for item in tools}
+            self.assertIn('memory_recall', names)
+            self.assertNotIn('memory_remember', names)
+            blocked = mcp._handle_tools_call({
+                'name': 'memory_remember',
+                'arguments': {'namespace': 'x', 'key': 'y', 'value': 'z'},
+            })
+            self.assertTrue(blocked['isError'])
+            self.assertIn('read-only', blocked['content'][0]['text'])
+
+
 class ServerDiscoverTests(unittest.TestCase):
     """`server/discover` (2026-07-28): initialize's payload, no handshake."""
 
