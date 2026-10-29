@@ -507,8 +507,19 @@ def _handle_discover(params: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+_MUTATING_TOOLS = frozenset({
+    'memory_remember', 'memory_update', 'memory_link',
+    'memory_unlink', 'memory_forget',
+})
+
+
+def _readonly() -> bool:
+    return os.environ.get('READONLY_MODE', '').lower() in ('1', 'true', 'yes', 'on')
+
+
 def _handle_tools_list(_params: Dict[str, Any]) -> Dict[str, Any]:
-    return {'tools': TOOLS}
+    return {'tools': [t for t in TOOLS
+                      if not (_readonly() and t['name'] in _MUTATING_TOOLS)]}
 
 
 def _handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -516,6 +527,9 @@ def _handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     args = params.get('arguments') or {}
     if not isinstance(name, str):
         raise ValueError('tools/call requires string "name"')
+    if _readonly() and name in _MUTATING_TOOLS:
+        return {'content': _content_text({'error': 'workspace is read-only',
+                                           'code': 'read_only'}), 'isError': True}
     try:
         result = _tool_call(name, args)
         return {'content': _content_text(result), 'isError': False}
