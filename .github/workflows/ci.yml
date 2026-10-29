@@ -143,8 +143,8 @@ jobs:
       - name: Test secure local authentication (offline)
         run: sh -n scripts/local-auth.sh && sh scripts/local-auth-test.sh
 
-      - name: Syntax-check MCP stdio launcher
-        run: sh -n scripts/kc-mcp-stdio.sh
+      - name: MCP stdio launcher security tests (offline)
+        run: sh -n scripts/kc-mcp-stdio.sh && sh scripts/kc-mcp-stdio-test.sh
 
       - name: Syntax-check doctor.sh
         run: bash -n scripts/doctor.sh
