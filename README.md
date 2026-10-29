@@ -2,7 +2,7 @@
 
 Self-hosted, Kubernetes-backed development workspaces with persistent home directories, browser IDE, terminal, AI agent orchestration, memory, and MCP tools.
 
-[Documentation](docs/) · [Security](SECURITY.md) · [Local development](docs/local-development.md) · [Model providers and MCP](docs/model-providers-mcp.md) · [Contributing](CONTRIBUTING.md)
+[Documentation](docs/) · [Audit](docs/security-audit-2026-10-29.md) · [Security](SECURITY.md) · [Local development](docs/local-development.md) · [Model providers and MCP](docs/model-providers-mcp.md) · [Contributing](CONTRIBUTING.md)
 
 ## Architecture
 
@@ -33,9 +33,10 @@ Three existing stdio servers: `dashboard`, `memory`, and `agent-orchestrator`. E
 ## Development and checks
 
 ```sh
-python3 -m unittest discover -s charts/workspace/tests -p '*_test.py'
+make python-tests
 python3 charts/workspace/harness_provider_test.py
 sh scripts/local-auth-test.sh
+sh scripts/kc-mcp-stdio-test.sh
 python3 scripts/test-kc-mcp-http.py
 helm lint charts/workspace
 helm template local charts/workspace -f deployments/local/values.yaml >/dev/null
