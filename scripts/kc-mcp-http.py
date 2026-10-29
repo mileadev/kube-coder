@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import subprocess
+import threading
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -44,15 +45,18 @@ class Handler(BaseHTTPRequestHandler):
     timeout_seconds = 120
     stdio_script = ""
     allowed_origins = frozenset()
+    slots = threading.BoundedSemaphore(8)
 
     def log_message(self, format_string, *args):
         # No headers, request bodies, prompts or provider secrets in logs.
         print("mcp-http " + (format_string % args), file=sys.stderr)
 
     def reply(self, code, payload=None, *, headers=None):
+        self.close_connection = True
         data = b"" if payload is None else json.dumps(payload, separators=(",", ":")).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Connection", "close")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(data)))
@@ -113,28 +117,34 @@ class Handler(BaseHTTPRequestHandler):
             # JSON-RPC notifications must not receive a response.
             self.reply(202)
             return
-        server = self.path.removeprefix("/mcp/")
-        try:
-            result = subprocess.run(
-                [self.stdio_script, server],
-                input=json.dumps(request, separators=(",", ":")) + "\n",
-                text=True, capture_output=True, timeout=self.timeout_seconds,
-                check=False,
-            )
-            if result.returncode:
-                raise RuntimeError("stdio MCP exit failure")
-            if len(result.stdout.encode("utf-8")) > MAX_RESPONSE:
-                raise RuntimeError("stdio MCP response exceeds limit")
-            lines = result.stdout.strip().splitlines()
-            if len(lines) != 1:
-                raise RuntimeError("invalid MCP stdio response framing")
-            response = json.loads(lines[0])
-            if not isinstance(response, dict) or response.get("jsonrpc") != "2.0" or response.get("id") != request["id"]:
-                raise RuntimeError("unexpected MCP response envelope")
-        except (OSError, ValueError, subprocess.TimeoutExpired, RuntimeError):
-            self.reply(502, {"error": "MCP backend unavailable or invalid"})
+        if not self.slots.acquire(blocking=False):
+            self.reply(429, {"error": "too many concurrent MCP requests"})
             return
-        self.reply(200, response)
+        try:
+            server = self.path.removeprefix("/mcp/")
+            try:
+                result = subprocess.run(
+                    [self.stdio_script, server],
+                    input=json.dumps(request, separators=(",", ":")) + "\n",
+                    text=True, capture_output=True, timeout=self.timeout_seconds,
+                    check=False,
+                )
+                if result.returncode:
+                    raise RuntimeError("stdio MCP exit failure")
+                if len(result.stdout.encode("utf-8")) > MAX_RESPONSE:
+                    raise RuntimeError("stdio MCP response exceeds limit")
+                lines = result.stdout.strip().splitlines()
+                if len(lines) != 1:
+                    raise RuntimeError("invalid MCP stdio response framing")
+                response = json.loads(lines[0])
+                if not isinstance(response, dict) or response.get("jsonrpc") != "2.0" or response.get("id") != request["id"]:
+                    raise RuntimeError("unexpected MCP response envelope")
+            except (OSError, ValueError, subprocess.TimeoutExpired, RuntimeError):
+                self.reply(502, {"error": "MCP backend unavailable or invalid"})
+                return
+            self.reply(200, response)
+        finally:
+            self.slots.release()
 
 
 def main():
