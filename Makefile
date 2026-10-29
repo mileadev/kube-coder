@@ -800,8 +800,9 @@ LOCAL_KEEPER_IMAGE := kube-coder-keeper:local
 LOCAL_VALUES      := deployments/local/values.yaml
 LOCAL_HOST        := kube-coder.local
 LOCAL_AUTH_SECRET := kube-coder-basic-auth
-LOCAL_AUTH_USER   := admin
-LOCAL_AUTH_PASS   := admin
+LOCAL_AUTH_USER   ?= admin
+LOCAL_AUTH_FILE   ?= $(HOME)/.config/kube-coder/local-auth
+LOCAL_PROVIDER_VALUES ?= # optional gitignored Helm values overlay
 LOCAL_RELEASE     := local-workspace
 # The local workspace lives in its own namespace too (#103), matching the
 # `namespace:` field in deployments/local/values.yaml.
@@ -865,13 +866,10 @@ local-build: ## Build the workspace image for your host arch directly inside min
 	# copy (the image lands straight in the cluster). Honors .dockerignore.
 	minikube image build -t $(LOCAL_IMAGE) -f devlaptop/Dockerfile -p $(LOCAL_PROFILE) .
 
-local-secret: ## Create the namespace + basic-auth secret (admin/admin) in the local cluster
-	$(LOCAL_KUBECTL) create namespace $(LOCAL_NS) --dry-run=client -o yaml | $(LOCAL_KUBECTL) apply -f -
-	@printf '%s:%s\n' "$(LOCAL_AUTH_USER)" "$$(openssl passwd -apr1 $(LOCAL_AUTH_PASS))" > /tmp/kc-local-htpasswd
-	$(LOCAL_KUBECTL) -n $(LOCAL_NS) create secret generic $(LOCAL_AUTH_SECRET) \
-		--from-file=auth=/tmp/kc-local-htpasswd --dry-run=client -o yaml | $(LOCAL_KUBECTL) apply -f -
-	@rm -f /tmp/kc-local-htpasswd
-	@echo "basic-auth secret '$(LOCAL_AUTH_SECRET)' ready (user: $(LOCAL_AUTH_USER) / pass: $(LOCAL_AUTH_PASS))"
+local-secret: ## Create the namespace + securely generated local basic-auth secret
+	@KC_LOCAL_CONTEXT="$(LOCAL_PROFILE)" KC_LOCAL_NAMESPACE="$(LOCAL_NS)" \
+	  KC_LOCAL_AUTH_SECRET="$(LOCAL_AUTH_SECRET)" KC_LOCAL_AUTH_USER="$(LOCAL_AUTH_USER)" \
+	  KC_LOCAL_AUTH_FILE="$(LOCAL_AUTH_FILE)" sh scripts/local-auth.sh
 
 # KEEPER=1 turns the always-on keeper on (#728), using the image
 # `make keeper-build-local` put in the node. Off by default, so the ordinary
@@ -882,7 +880,7 @@ local-deploy: ## Deploy base-infrastructure + the workspace to the local cluster
 	$(LOCAL_HELM) upgrade base-infrastructure ./charts/base-infrastructure \
 		--namespace $(LOCAL_NS) --set namespace=$(LOCAL_NS) --install --wait --timeout 3m
 	$(LOCAL_HELM) upgrade $(LOCAL_RELEASE) ./charts/workspace \
-		-f $(LOCAL_VALUES) --namespace $(LOCAL_NS) $(local_keeper_flags) --install --wait --timeout 5m
+		-f $(LOCAL_VALUES) $(if $(strip $(LOCAL_PROVIDER_VALUES)),-f "$(LOCAL_PROVIDER_VALUES)",) --namespace $(LOCAL_NS) $(local_keeper_flags) --install --wait --timeout 5m
 	# Force a rollout so a freshly `local-build`-loaded image is picked up:
 	# the tag (kube-coder:local) doesn't change, so helm sees no diff and the
 	# pod would otherwise keep the old image even though minikube reloaded it.
@@ -901,7 +899,7 @@ local-info: ## Print local access details (/etc/hosts line, URL, credentials)
 	@echo "2. Forward the ingress (keep this running in a terminal):"
 	@echo "     make local-forward"
 	@echo "3. Open:        http://$(LOCAL_HOST):8080/"
-	@echo "4. Basic auth:  $(LOCAL_AUTH_USER) / $(LOCAL_AUTH_PASS)"
+	@echo "4. Basic auth:  $(LOCAL_AUTH_USER) (password file: $(LOCAL_AUTH_FILE))"
 	@echo ""
 	@echo "Logs:  $(LOCAL_KUBECTL) -n $(LOCAL_NS) logs -f deploy/ws-local -c ide"
 	@echo "Shell: $(LOCAL_KUBECTL) -n $(LOCAL_NS) exec -it deploy/ws-local -c ide -- bash"
