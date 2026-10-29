@@ -23,6 +23,11 @@ case "$output$output2" in *"$first"*) echo 'Password leaked to output' >&2; exit
 export LOCAL_AUTH_PASS='test-injected-pass'
 sh "$(dirname "$0")/local-auth.sh" >/dev/null
 test "$(cat "$KC_LOCAL_AUTH_FILE")" = test-injected-pass
+if LOCAL_AUTH_PASS='weak' sh "$(dirname "$0")/local-auth.sh" >/dev/null 2>&1; then
+  echo 'accepted weak operator-supplied password' >&2
+  exit 1
+fi
+test "$(cat "$KC_LOCAL_AUTH_FILE")" = test-injected-pass
 ln -s "$root/captured" "$root/symlink"
 KC_LOCAL_AUTH_FILE="$root/symlink" sh "$(dirname "$0")/local-auth.sh" >/dev/null 2>&1 && exit 1
 printf '%s\n' 'PASS local-auth lifecycle, file mode, no stdout secret, symlink rejection'
