@@ -43,6 +43,7 @@ TOOL_OUTPUT_CAP = 64 * 1024  # 64 KiB per tool result
 BASH_TIMEOUT = 120
 HTTP_TIMEOUT = 180
 STDIN_IDLE_SECS = 1.5  # consider prompt complete after this much idle
+LAST_RUN_FAILED = False  # one-shot CLI must exit nonzero on upstream failure
 WORKDIR = os.environ.get("PWD") or os.getcwd()
 
 
@@ -569,6 +570,8 @@ def run_once(prompt: str, base_url: str, api_key: str, model: str, messages=None
     """Process one user turn. If `messages` is provided, append to it (REPL
     mode); otherwise start a fresh thread with the system prompt. Returns
     the updated messages list so the caller can carry context forward."""
+    global LAST_RUN_FAILED
+    LAST_RUN_FAILED = False
     if messages is None:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.append({"role": "user", "content": prompt})
@@ -578,15 +581,18 @@ def run_once(prompt: str, base_url: str, api_key: str, model: str, messages=None
         try:
             resp = chat(messages, base_url, api_key, model)
         except urllib.error.URLError as e:
+            LAST_RUN_FAILED = True
             emit_final(f"upstream API error: {e}")
             return messages
         except Exception as e:
+            LAST_RUN_FAILED = True
             emit_final(f"unexpected error talking to model: {type(e).__name__}: {e}")
             return messages
 
         try:
             msg = resp["choices"][0]["message"]
         except (KeyError, IndexError, TypeError):
+            LAST_RUN_FAILED = True
             emit_final(f"malformed model response: {json.dumps(resp)[:300]}")
             return messages
 
@@ -643,6 +649,7 @@ def run_once(prompt: str, base_url: str, api_key: str, model: str, messages=None
                 "content": result,
             })
 
+    LAST_RUN_FAILED = True
     emit_final(f"(stopped after {MAX_LOOPS} tool loops; the model never produced a final answer)")
     return messages
 
@@ -703,7 +710,7 @@ def main():
 
     if one_shot_prompt is not None:
         run_once(one_shot_prompt, base_url, api_key, model)
-        return
+        return 1 if LAST_RUN_FAILED else 0
 
     # ─── REPL ───
     # First prompt has a generous deadline (dashboard pastes via tmux
@@ -732,4 +739,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
