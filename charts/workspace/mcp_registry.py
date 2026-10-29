@@ -19,7 +19,7 @@ registry behind the dashboard's Settings → MCP servers section:
     Codex     $CODEX_HOME/config.toml       → via `codex mcp add/remove`
               (the CLI merges TOML for us; best-effort, gated on the binary)
 
-LibreFang and kc-harness have no MCP seeding today, so they are out of scope
+LibreFang and kc-harness have no file-based MCP seeding today, so they are out of scope
 here — when they grow one, add a `_sync_*` function and list it in _PROVIDERS.
 
 The `managed` list records which names THIS registry has written into the
