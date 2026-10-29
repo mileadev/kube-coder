@@ -239,6 +239,45 @@ spec:
         - name: KC_FALLBACK_PROVIDER_NAME
           value: {{ .Values.assistant.fallback.providerName | quote }}
         {{- end }}
+        {{- if (.Values.assistant.ollamaLocal).enabled }}
+        - name: KC_OLLAMA_LOCAL_ENABLED
+          value: "true"
+        - name: KC_OLLAMA_LOCAL_BASE_URL
+          value: {{ required "assistant.ollamaLocal.baseUrl required" .Values.assistant.ollamaLocal.baseUrl | quote }}
+        - name: KC_OLLAMA_LOCAL_MODEL
+          value: {{ required "assistant.ollamaLocal.model required" .Values.assistant.ollamaLocal.model | quote }}
+        {{- if (.Values.assistant.ollamaLocal).existingSecretName }}
+        - name: KC_OLLAMA_LOCAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.assistant.ollamaLocal.existingSecretName | quote }}
+              key: api-key
+        {{- end }}
+        {{- end }}
+        {{- if (.Values.assistant.ollamaCloud).enabled }}
+        - name: KC_OLLAMA_CLOUD_ENABLED
+          value: "true"
+        - name: KC_OLLAMA_CLOUD_MODEL
+          value: {{ required "assistant.ollamaCloud.model required" .Values.assistant.ollamaCloud.model | quote }}
+        - name: KC_OLLAMA_CLOUD_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ required "assistant.ollamaCloud.existingSecretName required" .Values.assistant.ollamaCloud.existingSecretName | quote }}
+              key: api-key
+        {{- end }}
+        {{- if (.Values.assistant.bedrock).enabled }}
+        - name: KC_BEDROCK_ENABLED
+          value: "true"
+        - name: KC_BEDROCK_REGION
+          value: {{ required "assistant.bedrock.region required" .Values.assistant.bedrock.region | quote }}
+        - name: KC_BEDROCK_MODEL
+          value: {{ required "assistant.bedrock.model required" .Values.assistant.bedrock.model | quote }}
+        - name: KC_BEDROCK_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ required "assistant.bedrock.existingSecretName required" .Values.assistant.bedrock.existingSecretName | quote }}
+              key: api-key
+        {{- end }}
         {{- /* Reasoning-effort defaults (#362). Optional per-assistant curation
                of the default effort level (low/medium/high/xhigh/max); blank =>
                the built-in default (high). Only claude/codex/kc-harness and the

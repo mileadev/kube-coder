@@ -43,6 +43,7 @@ TOOL_OUTPUT_CAP = 64 * 1024  # 64 KiB per tool result
 BASH_TIMEOUT = 120
 HTTP_TIMEOUT = 180
 STDIN_IDLE_SECS = 1.5  # consider prompt complete after this much idle
+LAST_RUN_FAILED = False  # one-shot CLI must exit nonzero on upstream failure
 WORKDIR = os.environ.get("PWD") or os.getcwd()
 
 
@@ -67,6 +68,47 @@ def pick_api_key():
     return os.environ.get("KC_HARNESS_API_KEY") or os.environ.get(
         "KC_FALLBACK_API_KEY", ""
     )
+
+
+def provider_config(provider):
+    """Resolve one explicit backend without silently falling back to another.
+
+    Keys are supplied through Kubernetes Secret env references; never render
+    them in command arguments, request URLs, or diagnostics.
+    """
+    if provider == "default":
+        return pick_base_url(), pick_api_key(), pick_model()
+    if provider == "ollama-local":
+        url = os.environ.get("KC_OLLAMA_LOCAL_BASE_URL", "http://127.0.0.1:11434/v1")
+        key = os.environ.get("KC_OLLAMA_LOCAL_API_KEY", "")
+        model = os.environ.get("KC_OLLAMA_LOCAL_MODEL") or pick_model()
+    elif provider == "ollama-cloud":
+        url = "https://ollama.com/v1"
+        key = os.environ.get("KC_OLLAMA_CLOUD_API_KEY", "")
+        model = os.environ.get("KC_OLLAMA_CLOUD_MODEL", "")
+        if not key or not model:
+            raise ValueError("ollama-cloud needs KC_OLLAMA_CLOUD_API_KEY and KC_OLLAMA_CLOUD_MODEL")
+    elif provider == "bedrock":
+        region = os.environ.get("KC_BEDROCK_REGION", "")
+        if not re.fullmatch(r"[a-z]{2}(?:-[a-z]+){1,3}-[0-9]+", region):
+            raise ValueError("bedrock needs a valid KC_BEDROCK_REGION")
+        url = f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1"
+        key = os.environ.get("KC_BEDROCK_API_KEY", "")
+        model = os.environ.get("KC_BEDROCK_MODEL", "")
+        if not key or not model:
+            raise ValueError("bedrock needs KC_BEDROCK_API_KEY and KC_BEDROCK_MODEL")
+    else:
+        raise ValueError(f"unknown model provider: {provider}")
+
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc or (
+        parsed.username or parsed.password or parsed.query or parsed.fragment
+    ):
+        raise ValueError("invalid model endpoint URL")
+    if provider != "ollama-local" and parsed.scheme != "https":
+        raise ValueError("cloud model endpoints require HTTPS")
+    return url, key, model
 
 
 # ───────────────────────── JSONL events ─────────────────────────
@@ -439,7 +481,8 @@ def chat(messages, base_url, api_key, model):
         "model": model,
         "messages": messages,
         "tools": tools_schema(),
-        "tool_choice": "auto",
+        # Ollama OpenAI compatibility documents tools but not tool_choice.
+        # Omitting it uses the providers default automatic selection.
         "stream": False,
         "temperature": 0.1,
     }
@@ -527,6 +570,8 @@ def run_once(prompt: str, base_url: str, api_key: str, model: str, messages=None
     """Process one user turn. If `messages` is provided, append to it (REPL
     mode); otherwise start a fresh thread with the system prompt. Returns
     the updated messages list so the caller can carry context forward."""
+    global LAST_RUN_FAILED
+    LAST_RUN_FAILED = False
     if messages is None:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.append({"role": "user", "content": prompt})
@@ -536,15 +581,18 @@ def run_once(prompt: str, base_url: str, api_key: str, model: str, messages=None
         try:
             resp = chat(messages, base_url, api_key, model)
         except urllib.error.URLError as e:
+            LAST_RUN_FAILED = True
             emit_final(f"upstream API error: {e}")
             return messages
         except Exception as e:
+            LAST_RUN_FAILED = True
             emit_final(f"unexpected error talking to model: {type(e).__name__}: {e}")
             return messages
 
         try:
             msg = resp["choices"][0]["message"]
         except (KeyError, IndexError, TypeError):
+            LAST_RUN_FAILED = True
             emit_final(f"malformed model response: {json.dumps(resp)[:300]}")
             return messages
 
@@ -601,6 +649,7 @@ def run_once(prompt: str, base_url: str, api_key: str, model: str, messages=None
                 "content": result,
             })
 
+    LAST_RUN_FAILED = True
     emit_final(f"(stopped after {MAX_LOOPS} tool loops; the model never produced a final answer)")
     return messages
 
@@ -622,9 +671,8 @@ def _startup_banner(base_url: str, model: str) -> str:
 
 
 def main():
-    base_url = pick_base_url()
-    api_key = pick_api_key()
-    model = pick_model()
+    provider = "default"
+    override_model = None
 
     # CLI flags. --once <prompt> runs a single prompt and exits (used by the
     # test harness). Without --once, run as an interactive REPL so the tmux
@@ -634,7 +682,9 @@ def main():
     while argv:
         a = argv.pop(0)
         if a == "--model" and argv:
-            model = argv.pop(0)
+            override_model = argv.pop(0)
+        elif a == "--provider" and argv:
+            provider = argv.pop(0)
         elif a == "--once" and argv:
             one_shot_prompt = argv.pop(0)
         elif a in ("-h", "--help"):
@@ -644,6 +694,14 @@ def main():
             sys.stderr.write(f"kc-harness: unknown arg {a!r}\n")
             return
 
+    try:
+        base_url, api_key, model = provider_config(provider)
+    except ValueError as exc:
+        sys.stderr.write(f"kc-harness: {exc}\n")
+        raise SystemExit(2)
+    if override_model:
+        model = override_model
+
     # Banner goes to stdout so the live tmux pane shows it. The JSONL
     # parser ignores lines that don't start with `{`, so this stays out
     # of the structured Output tab.
@@ -652,7 +710,7 @@ def main():
 
     if one_shot_prompt is not None:
         run_once(one_shot_prompt, base_url, api_key, model)
-        return
+        return 1 if LAST_RUN_FAILED else 0
 
     # ─── REPL ───
     # First prompt has a generous deadline (dashboard pastes via tmux
@@ -681,4 +739,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -14,11 +14,12 @@ registry behind the dashboard's Settings → MCP servers section:
 
     Claude    ~/.claude.json                → mcpServers.<name> (stdio)
     OpenCode  ~/.config/opencode/opencode.json → mcp.<name> (type=local)
+    Gemini    ~/.gemini/settings.json      → mcpServers.<name> (stdio)
     Ante      ~/.ante/settings.json         → mcp_servers.<name>
     Codex     $CODEX_HOME/config.toml       → via `codex mcp add/remove`
               (the CLI merges TOML for us; best-effort, gated on the binary)
 
-LibreFang and kc-harness have no MCP seeding today, so they are out of scope
+LibreFang and kc-harness have no file-based MCP seeding today, so they are out of scope
 here — when they grow one, add a `_sync_*` function and list it in _PROVIDERS.
 
 The `managed` list records which names THIS registry has written into the
@@ -47,6 +48,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 REGISTRY_FILE = '/home/dev/.claude-tasks/mcp-servers.json'
 
@@ -56,6 +58,7 @@ REGISTRY_FILE = '/home/dev/.claude-tasks/mcp-servers.json'
 CLAUDE_CONFIG = os.path.expanduser('~/.claude.json')
 OPENCODE_CONFIG = os.path.expanduser('~/.config/opencode/opencode.json')
 ANTE_SETTINGS = os.path.expanduser('~/.ante/settings.json')
+GEMINI_SETTINGS = os.path.expanduser('~/.gemini/settings.json')
 CODEX_HOME = '/home/dev/.codex'
 
 # Boot-seeded defaults (seed_claude_config.DESIRED_MCPS + start.sh blocks).
@@ -91,12 +94,9 @@ def _read_registry() -> dict:
 
 
 def _write_registry(data: dict) -> None:
-    os.makedirs(os.path.dirname(REGISTRY_FILE), mode=0o700, exist_ok=True)
-    tmp = REGISTRY_FILE + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(data, f, indent=2)
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, REGISTRY_FILE)
+    # This file contains MCP env secrets; temp files must be 0600 from
+    # creation, never chmod'd only after the contents have been written.
+    _atomic_json_write(REGISTRY_FILE, data)
 
 
 def _validate(name, command, args, env):
@@ -201,13 +201,21 @@ def _load_json_file(path):
 
 
 def _atomic_json_write(path, data):
+    # Provider configs carry MCP environment credentials. Named temporary
+    # files inherited umask 022, exposing secrets to other local users until
+    # replacement. mkstemp starts at 0600, avoids predictable shared names,
+    # and permits concurrent writers to use independent temporary files.
     parent = os.path.dirname(path) or '.'
-    os.makedirs(parent, exist_ok=True)
-    tmp = path + '.mcp-tmp'
-    with open(tmp, 'w') as f:
-        json.dump(data, f, indent=2)
-        f.write('\n')
-    os.replace(tmp, path)
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix='.mcp-', dir=parent)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(data, f, indent=2)
+            f.write('\n')
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def _apply_map(cfg, key, upserts, removals, translate):
@@ -270,6 +278,18 @@ def _sync_ante(upserts, removals):
         _atomic_json_write(ANTE_SETTINGS, cfg)
 
 
+def _sync_gemini(upserts, removals):
+    # Gemini CLI uses the same stdio mcpServers schema as Claude.
+    def translate(e):
+        result = {'command': e['command'], 'args': e['args']}
+        if e['env']:
+            result['env'] = e['env']
+        return result
+    cfg = _load_json_file(GEMINI_SETTINGS)
+    if _apply_map(cfg, 'mcpServers', upserts, removals, translate):
+        _atomic_json_write(GEMINI_SETTINGS, cfg)
+
+
 def _sync_codex(upserts, removals):
     # Codex owns its TOML; drive it through the CLI like start.sh does.
     # `codex mcp add` overwrites the named server and preserves the rest.
@@ -306,7 +326,7 @@ def _sync_codex(upserts, removals):
 # server list as a request field, so a file-based fan-out has nothing to write.
 # Its servers are supplied by the ACP bridge at session open. Adding a no-op
 # entry here would only make sync_all() report a provider it never syncs.
-_PROVIDERS = ('claude', 'opencode', 'ante', 'codex')
+_PROVIDERS = ('claude', 'opencode', 'ante', 'codex', 'gemini')
 
 
 def sync_all():

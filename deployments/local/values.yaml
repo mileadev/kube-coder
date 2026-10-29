@@ -70,6 +70,26 @@ build:
   pushSecretName: ""
   defaultDestinationRepo: ""
 
+# minikube's default Kubernetes service CIDR is 10.96.0.0/12; the cloud
+# chart defaults use the original upstream DOKS 10.245.0.0/16 range.
+# Without a local override, a cluster with LOCAL_CNI=calico enforcing
+# NetworkPolicy can lose DNS/apiserver reachability. Verify these addresses
+# against YOUR minikube profile before trusting the isolation boundary:
+# kubectl --context kube-coder -n kube-system get svc kube-dns
+# kubectl --context kube-coder get svc kubernetes
+# kubectl --context kube-coder get nodes -o jsonpath='{.items[*].spec.podCIDR}'
+networkPolicy:
+  egress:
+    flavor: networkpolicy
+    deniedCIDRs:
+      - "169.254.0.0/16"
+      - "10.244.0.0/16"
+      - "10.96.0.0/12"
+    dns:
+      enabled: true
+      serviceIPs: ["10.96.0.10/32"]
+    apiServerIPs: ["10.96.0.1/32"]
+
 # Add your own keys via a gitignored secrets/local/*.yaml overlay if desired.
 # Without them the workspace still boots; you log into Claude interactively
 # by running `claude` once in the pod's terminal.

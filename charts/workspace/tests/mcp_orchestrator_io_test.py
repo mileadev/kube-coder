@@ -295,7 +295,7 @@ class DispatchTests(TasksDirTestCase):
         result = send.call_args[0][0]['result']
         self.assertEqual(result['serverInfo']['name'], 'agent-orchestrator')
         self.assertEqual(result['supportedProtocolVersions'],
-                         ['2024-11-05', '2026-07-28'])
+                         ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25', '2026-07-28'])
         self.assertEqual(result['protocolVersion'], orch.PROTOCOL_VERSION)
 
     def test_discover_is_registered_and_negotiates(self):
@@ -310,7 +310,21 @@ class DispatchTests(TasksDirTestCase):
             orch._handle_discover(2, {})
         send.call_args[0][0]['result']['supportedProtocolVersions'].append('nope')
         self.assertEqual(orch.SUPPORTED_PROTOCOL_VERSIONS,
-                         ['2024-11-05', '2026-07-28'])
+                         ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25', '2026-07-28'])
+
+    def test_readonly_hides_and_rejects_mutation(self):
+        with mock.patch.dict(os.environ, {'READONLY_MODE': 'true'}):
+            with mock.patch.object(orch, '_send') as send:
+                orch._handle_list_tools(1, {})
+            tools = send.call_args[0][0]['result']['tools']
+            names = {t['name'] for t in tools}
+            self.assertIn('get_agent_status', names)
+            self.assertNotIn('spawn_agent', names)
+            self.assertNotIn('kill_agent', names)
+            with mock.patch.object(orch, '_send') as send:
+                orch._handle_call_tool(2, {'name': 'spawn_agent', 'arguments': {'prompt': 'unsafe'}})
+            result = send.call_args[0][0]['result']
+            self.assertTrue(result['isError'])
 
     def test_list_tools_returns_schemas(self):
         with mock.patch.object(orch, '_send') as send:

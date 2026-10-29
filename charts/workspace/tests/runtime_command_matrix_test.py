@@ -115,6 +115,24 @@ GOLDEN = {
         'orch_interactive': 'python3 /tmp/browser/harness.py',
         'orch_headless': 'python3 /tmp/browser/harness.py',
     },
+    'kc-ollama-local': {
+        'interactive': 'python3 /tmp/browser/harness.py --provider ollama-local',
+        'interactive_auto': 'python3 /tmp/browser/harness.py --provider ollama-local',
+        'orch_interactive': 'python3 /tmp/browser/harness.py --provider ollama-local',
+        'orch_headless': 'python3 /tmp/browser/harness.py --provider ollama-local',
+    },
+    'kc-ollama-cloud': {
+        'interactive': 'python3 /tmp/browser/harness.py --provider ollama-cloud',
+        'interactive_auto': 'python3 /tmp/browser/harness.py --provider ollama-cloud',
+        'orch_interactive': 'python3 /tmp/browser/harness.py --provider ollama-cloud',
+        'orch_headless': 'python3 /tmp/browser/harness.py --provider ollama-cloud',
+    },
+    'kc-bedrock': {
+        'interactive': 'python3 /tmp/browser/harness.py --provider bedrock',
+        'interactive_auto': 'python3 /tmp/browser/harness.py --provider bedrock',
+        'orch_interactive': 'python3 /tmp/browser/harness.py --provider bedrock',
+        'orch_headless': 'python3 /tmp/browser/harness.py --provider bedrock',
+    },
     'librefang': {
         # Both sides prepend the kernel-daemon bootstrap: `librefang chat` /
         # `message` panic ("there is no reactor running") without it.
@@ -154,6 +172,7 @@ _STEERING_ENV = (
     'KC_DSH_EFFORT', 'KC_CODEX_EFFORT', 'KC_CLAUDE_EFFORT', 'KC_HARNESS_EFFORT',
     'KC_LIBREFANG_AGENT', 'KC_OPENROUTER_MODEL', 'KC_DEEPSEEK_MODEL',
     'KC_OPENCODE_ZEN_MODEL', 'KC_HARNESS_MODEL', 'KC_FALLBACK_MODEL',
+    'KC_OLLAMA_LOCAL_MODEL', 'KC_OLLAMA_CLOUD_MODEL', 'KC_BEDROCK_MODEL',
 )
 
 _PROMPT = 'hi there'

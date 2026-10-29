@@ -74,6 +74,10 @@ jobs:
             --set oauth2.clientId=ci --set oauth2.clientSecret=ci \
             > /dev/null
 
+      - name: Template workspace with all optional model providers
+        run: |
+          helm template test-ws charts/workspace/             -f charts/workspace/tests/test-values.yaml             --set assistant.ollamaLocal.enabled=true             --set assistant.ollamaCloud.enabled=true             --set assistant.ollamaCloud.model=gemma4:31b             --set assistant.ollamaCloud.existingSecretName=kc-ollama-cloud             --set assistant.bedrock.enabled=true             --set assistant.bedrock.region=eu-west-1             --set assistant.bedrock.model=openai.gpt-oss-20b-1:0             --set assistant.bedrock.existingSecretName=kc-bedrock             > /dev/null
+
       - name: Lint workspace-controller chart
         run: helm lint charts/workspace-controller/ -f charts/workspace-controller/tests/test-values.yaml
 
@@ -116,6 +120,12 @@ jobs:
       - name: Run server.py tests
         run: make python-tests
 
+      - name: Provider request validation (offline)
+        run: python3 charts/workspace/harness_provider_test.py
+
+      - name: MCP HTTP gateway integration tests (offline)
+        run: python3 scripts/test-kc-mcp-http.py
+
       - name: Run controller.py tests
         # controller.py has had its own stdlib-unittest suite for a long time but
         # nothing in CI ran it — including the supply-chain assertions on the
@@ -129,6 +139,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Test secure local authentication (offline)
+        run: sh -n scripts/local-auth.sh && sh scripts/local-auth-test.sh
+
+      - name: MCP stdio launcher security tests (offline)
+        run: sh -n scripts/kc-mcp-stdio.sh && sh scripts/kc-mcp-stdio-test.sh
 
       - name: Syntax-check doctor.sh
         run: bash -n scripts/doctor.sh
