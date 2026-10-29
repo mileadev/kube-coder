@@ -69,6 +69,47 @@ def pick_api_key():
     )
 
 
+def provider_config(provider):
+    """Resolve one explicit backend without silently falling back to another.
+
+    Keys are supplied through Kubernetes Secret env references; never render
+    them in command arguments, request URLs, or diagnostics.
+    """
+    if provider == "default":
+        return pick_base_url(), pick_api_key(), pick_model()
+    if provider == "ollama-local":
+        url = os.environ.get("KC_OLLAMA_LOCAL_BASE_URL", "http://127.0.0.1:11434/v1")
+        key = os.environ.get("KC_OLLAMA_LOCAL_API_KEY", "")
+        model = os.environ.get("KC_OLLAMA_LOCAL_MODEL") or pick_model()
+    elif provider == "ollama-cloud":
+        url = "https://ollama.com/v1"
+        key = os.environ.get("KC_OLLAMA_CLOUD_API_KEY", "")
+        model = os.environ.get("KC_OLLAMA_CLOUD_MODEL", "")
+        if not key or not model:
+            raise ValueError("ollama-cloud needs KC_OLLAMA_CLOUD_API_KEY and KC_OLLAMA_CLOUD_MODEL")
+    elif provider == "bedrock":
+        region = os.environ.get("KC_BEDROCK_REGION", "")
+        if not re.fullmatch(r"[a-z]{2}(?:-[a-z]+){1,3}-[0-9]+", region):
+            raise ValueError("bedrock needs a valid KC_BEDROCK_REGION")
+        url = f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1"
+        key = os.environ.get("KC_BEDROCK_API_KEY", "")
+        model = os.environ.get("KC_BEDROCK_MODEL", "")
+        if not key or not model:
+            raise ValueError("bedrock needs KC_BEDROCK_API_KEY and KC_BEDROCK_MODEL")
+    else:
+        raise ValueError(f"unknown model provider: {provider}")
+
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc or (
+        parsed.username or parsed.password or parsed.query or parsed.fragment
+    ):
+        raise ValueError("invalid model endpoint URL")
+    if provider != "ollama-local" and parsed.scheme != "https":
+        raise ValueError("cloud model endpoints require HTTPS")
+    return url, key, model
+
+
 # ───────────────────────── JSONL events ─────────────────────────
 # Shape: {type:"user"|"assistant"|"result", message.content[], or .result}.
 # Consumed by the SPA's terminal capture endpoint and by the JSONL parser
@@ -622,9 +663,8 @@ def _startup_banner(base_url: str, model: str) -> str:
 
 
 def main():
-    base_url = pick_base_url()
-    api_key = pick_api_key()
-    model = pick_model()
+    provider = "default"
+    override_model = None
 
     # CLI flags. --once <prompt> runs a single prompt and exits (used by the
     # test harness). Without --once, run as an interactive REPL so the tmux
@@ -634,7 +674,9 @@ def main():
     while argv:
         a = argv.pop(0)
         if a == "--model" and argv:
-            model = argv.pop(0)
+            override_model = argv.pop(0)
+        elif a == "--provider" and argv:
+            provider = argv.pop(0)
         elif a == "--once" and argv:
             one_shot_prompt = argv.pop(0)
         elif a in ("-h", "--help"):
@@ -643,6 +685,14 @@ def main():
         else:
             sys.stderr.write(f"kc-harness: unknown arg {a!r}\n")
             return
+
+    try:
+        base_url, api_key, model = provider_config(provider)
+    except ValueError as exc:
+        sys.stderr.write(f"kc-harness: {exc}\\n")
+        raise SystemExit(2)
+    if override_model:
+        model = override_model
 
     # Banner goes to stdout so the live tmux pane shows it. The JSONL
     # parser ignores lines that don't start with `{`, so this stays out

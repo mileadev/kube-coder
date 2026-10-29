@@ -288,6 +288,41 @@ RUNTIMES = {
         'launch_args': ['python3', '/tmp/browser/harness.py'],
         'headless_args': None,
     },
+    # Explicit model-provider profiles: each opt-in runtime has a stable
+    # upstream and never borrows an unrelated provider's credentials.
+    'kc-ollama-local': {
+        'label': 'Ollama Local',
+        'auth_help': 'Configure assistant.ollamaLocal and reach the Ollama host over a trusted network.',
+        'opt_in_env': 'KC_OLLAMA_LOCAL_ENABLED',
+        'model_env': 'KC_OLLAMA_LOCAL_MODEL',
+        'model_default': None,
+        'skip_permissions_flag': None,
+        'launch_args': ['python3', '/tmp/browser/harness.py', '--provider',
+                        'ollama-local', ['--model', MODEL]],
+        'headless_args': None,
+    },
+    'kc-ollama-cloud': {
+        'label': 'Ollama Cloud',
+        'auth_help': 'Configure assistant.ollamaCloud with a Kubernetes Secret and cloud model.',
+        'opt_in_env': 'KC_OLLAMA_CLOUD_ENABLED',
+        'model_env': 'KC_OLLAMA_CLOUD_MODEL',
+        'model_default': None,
+        'skip_permissions_flag': None,
+        'launch_args': ['python3', '/tmp/browser/harness.py', '--provider',
+                        'ollama-cloud', ['--model', MODEL]],
+        'headless_args': None,
+    },
+    'kc-bedrock': {
+        'label': 'Amazon Bedrock',
+        'auth_help': 'Configure assistant.bedrock with a Bedrock API-key Secret, Region, and model.',
+        'opt_in_env': 'KC_BEDROCK_ENABLED',
+        'model_env': 'KC_BEDROCK_MODEL',
+        'model_default': None,
+        'skip_permissions_flag': None,
+        'launch_args': ['python3', '/tmp/browser/harness.py', '--provider',
+                        'bedrock', ['--model', MODEL]],
+        'headless_args': None,
+    },
 }
 
 
