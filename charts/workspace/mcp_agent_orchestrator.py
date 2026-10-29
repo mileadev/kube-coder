@@ -1038,12 +1038,20 @@ def _handle_discover(id_val: Any, params: Any) -> None:
     _send({'jsonrpc': '2.0', 'id': id_val, 'result': result})
 
 
+_MUTATING_TOOLS = frozenset(('spawn_agent', 'kill_agent'))
+
+
+def _readonly() -> bool:
+    return os.environ.get('READONLY_MODE', '').lower() in ('1', 'true', 'yes', 'on')
+
+
 def _handle_list_tools(id_val: Any, params: Any) -> None:
     _send({
         'jsonrpc': '2.0',
         'id': id_val,
         'result': {
-            'tools': [t['schema'] for t in TOOLS.values()],
+            'tools': [t['schema'] for name, t in TOOLS.items()
+                      if not (_readonly() and name in _MUTATING_TOOLS)],
         },
     })
 
@@ -1057,6 +1065,11 @@ def _handle_call_tool(id_val: Any, params: Any) -> None:
     tool = TOOLS.get(name)
     if tool is None:
         _error(id_val, -32601, f'Unknown tool: {name}')
+        return
+    if _readonly() and name in _MUTATING_TOOLS:
+        _send({'jsonrpc': '2.0', 'id': id_val,
+               'result': {'isError': True, 'content': [
+                   {'type': 'text', 'text': 'workspace is read-only'}]}})
         return
     try:
         result = tool['handler'](args)
