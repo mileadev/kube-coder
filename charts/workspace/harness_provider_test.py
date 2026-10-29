@@ -51,6 +51,22 @@ class ProviderConfigTest(unittest.TestCase):
         self.assertNotIn("tool_choice", payload)
         self.assertTrue(payload["tools"])
 
+    def test_upstream_failure_is_marked_for_cli_exit(self):
+        from unittest.mock import patch
+        from urllib.error import URLError
+        with patch.object(harness, 'chat', side_effect=URLError('synthetic failure')):
+            with patch.object(harness, 'emit_user_text'), patch.object(harness, 'emit_final'):
+                harness.run_once('test', 'https://ollama.com/v1', 'dummy', 'model')
+        self.assertTrue(harness.LAST_RUN_FAILED)
+
+    def test_valid_model_reply_has_success_status(self):
+        with patch.object(harness, 'chat', return_value={
+            'choices': [{'message': {'content': 'done'}}],
+        }):
+            with patch.object(harness, 'emit_user_text'), patch.object(harness, 'emit_final'):
+                harness.run_once('test', 'https://ollama.com/v1', 'dummy', 'model')
+        self.assertFalse(harness.LAST_RUN_FAILED)
+
     def test_unknown_provider_fails_closed(self):
         with self.assertRaises(ValueError):
             harness.provider_config("unknown")
