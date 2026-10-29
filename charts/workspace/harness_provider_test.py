@@ -38,6 +38,19 @@ class ProviderConfigTest(unittest.TestCase):
             url, _, _ = harness.provider_config("bedrock")
             self.assertEqual(url, "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1")
 
+    def test_ollama_chat_omits_unsupported_tool_choice(self):
+        from unittest.mock import MagicMock
+        import json
+        response = MagicMock()
+        response.read.return_value = b'{"choices":[]}'
+        response.__enter__.return_value = response
+        with patch.object(harness.urllib.request, "urlopen", return_value=response) as opened:
+            harness.chat([{"role": "user", "content": "hello"}],
+                         "https://ollama.com/v1", "dummy", "sample-model")
+        payload = json.loads(opened.call_args.args[0].data)
+        self.assertNotIn("tool_choice", payload)
+        self.assertTrue(payload["tools"])
+
     def test_unknown_provider_fails_closed(self):
         with self.assertRaises(ValueError):
             harness.provider_config("unknown")
