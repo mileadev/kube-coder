@@ -689,7 +689,7 @@ def main():
     try:
         base_url, api_key, model = provider_config(provider)
     except ValueError as exc:
-        sys.stderr.write(f"kc-harness: {exc}\\n")
+        sys.stderr.write(f"kc-harness: {exc}\n")
         raise SystemExit(2)
     if override_model:
         model = override_model
