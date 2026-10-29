@@ -19,6 +19,10 @@ if [ -L "$auth_file" ]; then
   echo 'Refusing symlinked local auth file' >&2
   exit 1
 fi
+if [ -n "${LOCAL_AUTH_PASS:-}" ] && [ "${#LOCAL_AUTH_PASS}" -lt 16 ]; then
+  echo "LOCAL_AUTH_PASS must contain at least 16 characters" >&2
+  exit 64
+fi
 if [ -n "${LOCAL_AUTH_PASS:-}" ] || [ ! -f "$auth_file" ]; then
   candidate=$(mktemp "$auth_dir/.local-auth.XXXXXXXX")
   trap 'rm -f "$candidate"' 0 1 2 3 15
@@ -32,7 +36,7 @@ if [ -n "${LOCAL_AUTH_PASS:-}" ] || [ ! -f "$auth_file" ]; then
 fi
 chmod 600 "$auth_file"
 password=$(cat "$auth_file")
-[ -n "$password" ] || { echo 'Local auth password cannot be empty' >&2; exit 1; }
+[ "${#password}" -ge 16 ] || { echo 'Local auth password must have at least 16 characters' >&2; exit 1; }
 htpasswd=$(mktemp)
 trap 'rm -f "$htpasswd"' 0 1 2 3 15
 hash=$(printf '%s' "$password" | openssl passwd -apr1 -stdin)
