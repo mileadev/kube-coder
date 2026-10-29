@@ -480,7 +480,8 @@ def chat(messages, base_url, api_key, model):
         "model": model,
         "messages": messages,
         "tools": tools_schema(),
-        "tool_choice": "auto",
+        # Ollama OpenAI compatibility documents tools but not tool_choice.
+        # Omitting it uses the providers default automatic selection.
         "stream": False,
         "temperature": 0.1,
     }
