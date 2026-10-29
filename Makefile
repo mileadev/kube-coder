@@ -889,7 +889,7 @@ local-deploy: ## Deploy base-infrastructure + the workspace to the local cluster
 
 local-forward: ## Port-forward the local ingress controller to localhost:8080 (blocking; Ctrl-C to stop)
 	@echo "Forwarding http://$(LOCAL_HOST):8080 -> ingress-nginx. Ensure /etc/hosts maps $(LOCAL_HOST) -> 127.0.0.1 (see 'make local-info')."
-	$(LOCAL_KUBECTL) -n ingress-nginx port-forward svc/ingress-nginx-controller 8080:80
+	$(LOCAL_KUBECTL) -n ingress-nginx port-forward --address 127.0.0.1 svc/ingress-nginx-controller 8080:80
 
 local-info: ## Print local access details (/etc/hosts line, URL, credentials)
 	@echo ""
