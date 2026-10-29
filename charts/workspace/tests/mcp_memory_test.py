@@ -209,6 +209,11 @@ class ProtocolVersionTests(unittest.TestCase):
             {'_meta': {'io.modelcontextprotocol/protocolVersion': '2026-07-28'}})
         self.assertEqual(out['protocolVersion'], '2026-07-28')
 
+    def test_2025_legacy_version_is_negotiated(self):
+        self.assertEqual(
+            self._initialize({'protocolVersion': '2025-11-25'})['protocolVersion'],
+            '2025-11-25')
+
     def test_unsupported_version_falls_back(self):
         out = mcp._handle_initialize({'protocolVersion': '1999-01-01'})
         self.assertEqual(out['protocolVersion'], mcp.PROTOCOL_VERSION)
@@ -230,7 +235,7 @@ class ServerDiscoverTests(unittest.TestCase):
         self.assertEqual(out['serverInfo'], mcp.SERVER_INFO)
         self.assertIn('tools', out['capabilities'])
         self.assertEqual(out['supportedProtocolVersions'],
-                         ['2024-11-05', '2026-07-28'])
+                         ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25', '2026-07-28'])
 
     def test_negotiates_like_initialize(self):
         out = mcp._handle_discover({'protocolVersion': '2026-07-28'})
@@ -239,7 +244,7 @@ class ServerDiscoverTests(unittest.TestCase):
     def test_does_not_mutate_the_shared_version_list(self):
         mcp._handle_discover({})['supportedProtocolVersions'].append('nope')
         self.assertEqual(mcp.SUPPORTED_PROTOCOL_VERSIONS,
-                         ['2024-11-05', '2026-07-28'])
+                         ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25', '2026-07-28'])
 
 
 class DispatchTests(unittest.TestCase):
