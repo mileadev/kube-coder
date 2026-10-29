@@ -2455,6 +2455,23 @@ class ClaudeTaskManager:
                 model=os.environ.get('KC_HARNESS_MODEL')
                       or os.environ.get('KC_FALLBACK_MODEL', 'qwen3:32b-q4_K_M'),
             ))
+        # Separate opt-in backends retain their own model and credentials.
+        for rid, flag, model in (
+            ('kc-ollama-local', 'KC_OLLAMA_LOCAL_ENABLED', 'KC_OLLAMA_LOCAL_MODEL'),
+            ('kc-ollama-cloud', 'KC_OLLAMA_CLOUD_ENABLED', 'KC_OLLAMA_CLOUD_MODEL'),
+            ('kc-bedrock', 'KC_BEDROCK_ENABLED', 'KC_BEDROCK_MODEL'),
+        ):
+            if runtimes.is_enabled(rid):
+                entry = dict(ClaudeTaskManager.ASSISTANTS[rid],
+                             model=os.environ.get(model, ''))
+                if rid != 'kc-ollama-local' and not os.environ.get(
+                    'KC_OLLAMA_CLOUD_API_KEY' if rid == 'kc-ollama-cloud'
+                    else 'KC_BEDROCK_API_KEY'
+                ):
+                    entry['ready'] = False
+                    entry['needs'] = ('KC_OLLAMA_CLOUD_API_KEY' if rid == 'kc-ollama-cloud'
+                                      else 'KC_BEDROCK_API_KEY')
+                out.append(entry)
         # Selectable models for the Hypervisor's in-chat model switcher (#308).
         # Only assistants whose adapter honours a per-thread `model` populate a
         # non-empty list; the frontend shows the switcher only then. First entry

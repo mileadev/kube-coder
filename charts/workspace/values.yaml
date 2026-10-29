@@ -804,6 +804,21 @@ assistant:
     # the OpenAI-compatible `reasoning_effort`. Blank => built-in default (high);
     # xhigh/max clamp to high (the harness endpoint's ceiling).
     effort: ""                            # KC_HARNESS_EFFORT
+  # Opt-in profiles. Keys must live in Kubernetes Secrets; no Helm inline keys.
+  ollamaLocal:
+    enabled: false
+    baseUrl: "http://host.minikube.internal:11434/v1"
+    model: "qwen3:8b"
+    existingSecretName: ""
+  ollamaCloud:
+    enabled: false
+    model: ""
+    existingSecretName: ""
+  bedrock:
+    enabled: false
+    region: ""
+    model: ""
+    existingSecretName: ""
   # Codex (OpenAI) — ChatGPT-OAuth terminal agent, pre-installed. No key here.
   codex:
     # Default reasoning effort (#362): codex model_reasoning_effort. Blank =>
