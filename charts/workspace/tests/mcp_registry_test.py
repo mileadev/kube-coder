@@ -29,6 +29,7 @@ class RegistryTestCase(unittest.TestCase):
             'CLAUDE_CONFIG': os.path.join(self.tmp, '.claude.json'),
             'OPENCODE_CONFIG': os.path.join(self.tmp, 'opencode', 'opencode.json'),
             'ANTE_SETTINGS': os.path.join(self.tmp, '.ante', 'settings.json'),
+            'GEMINI_SETTINGS': os.path.join(self.tmp, '.gemini', 'settings.json'),
             'CODEX_HOME': os.path.join(self.tmp, '.codex'),
         }
         for attr, value in patches.items():
@@ -119,6 +120,7 @@ class FanOutTests(RegistryTestCase):
         self.assertEqual(results['opencode'], 'ok')
         self.assertEqual(results['ante'], 'ok')
         self.assertIn('skipped', results['codex'])  # CLI absent in this case
+        self.assertEqual(results['gemini'], 'ok')
 
         claude = self.read(mr.CLAUDE_CONFIG)['mcpServers']['github']
         self.assertEqual(claude, {'type': 'stdio', 'command': 'npx',
@@ -129,6 +131,13 @@ class FanOutTests(RegistryTestCase):
                               'command': ['npx', '-y', 'server-github'],
                               'enabled': True,
                               'environment': {'GITHUB_TOKEN': 't'}})
+        gemini = self.read(mr.GEMINI_SETTINGS)['mcpServers']['github']
+        self.assertEqual(gemini, {'command': 'npx', 'args': ['-y', 'server-github'],
+                                  'env': {'GITHUB_TOKEN': 't'}})
+        for path in (mr.REGISTRY_FILE, mr.CLAUDE_CONFIG, mr.OPENCODE_CONFIG,
+                     mr.ANTE_SETTINGS, mr.GEMINI_SETTINGS):
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600,
+                             f'{path} contains credentials but is world-readable')
         ante = self.read(mr.ANTE_SETTINGS)['mcp_servers']['github']
         self.assertEqual(ante, {'command': 'npx', 'args': ['-y', 'server-github'],
                                 'env': {'GITHUB_TOKEN': 't'}})
@@ -143,6 +152,8 @@ class FanOutTests(RegistryTestCase):
                                         'mcp': {'memory': {'type': 'local'}}})
         self.write(mr.ANTE_SETTINGS, {'mcp_servers': {'memory': {'command': 'p'}},
                                       'has_completed_onboarding': True})
+        self.write(mr.GEMINI_SETTINGS, {'mcpServers': {'hand-edit': {'command': 'p'}},
+                                        'general': {'previewFeatures': True}})
         mr.set_server('mine', 'run')
         mr.sync_all()
         mr.delete_server('mine')
@@ -160,6 +171,10 @@ class FanOutTests(RegistryTestCase):
         ante = self.read(mr.ANTE_SETTINGS)
         self.assertIn('memory', ante['mcp_servers'])
         self.assertTrue(ante['has_completed_onboarding'])
+        gemini = self.read(mr.GEMINI_SETTINGS)
+        self.assertIn('hand-edit', gemini['mcpServers'])
+        self.assertNotIn('mine', gemini['mcpServers'])
+        self.assertTrue(gemini['general']['previewFeatures'])
         self.assertNotIn('mine', ante['mcp_servers'])
 
     def test_disabled_entry_is_removed_from_providers_but_kept_in_registry(self):
