@@ -1322,7 +1322,7 @@ def _enabled_tools() -> Dict[str, Any]:
 # ───────────────────────────────────────────────────────────────────────────
 
 PROTOCOL_VERSION = '2024-11-05'
-SUPPORTED_PROTOCOL_VERSIONS = ['2024-11-05', '2026-07-28']
+SUPPORTED_PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25', '2026-07-28']
 
 
 def _negotiate_protocol_version(params) -> str:
