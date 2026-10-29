@@ -57,7 +57,7 @@ echo '127.0.0.1  kube-coder.local' | sudo tee -a /etc/hosts
 # 2. Forward the ingress controller (keep this running in its own terminal):
 make local-forward
 
-# 3. Open the dashboard and log in with basic auth admin / admin:
+# 3. Open the dashboard and log in as admin using your generated password:
 open http://kube-coder.local:8080/
 ```
 
@@ -87,14 +87,21 @@ involved. Re-run this after editing the `Dockerfile` or anything baked into the
 image (the dashboard SPA, installed CLIs).
 
 ### Step 3 — `local-secret`
-Creates the `coder` namespace and a `kube-coder-basic-auth` Secret containing an
-htpasswd entry for **admin / admin** (generated with `openssl passwd -apr1`).
-The ingress references this Secret for HTTP basic auth. Change the credentials
-by overriding `LOCAL_AUTH_USER` / `LOCAL_AUTH_PASS`:
+Creates the `ws-local` namespace and a `kube-coder-basic-auth` Secret with
+a **random 48-character password** generated on first use. The password is
+persisted at `~/.config/kube-coder/local-auth` (mode `0600`) and reused for
+subsequent local deploys.
 
-```bash
-make local-secret LOCAL_AUTH_USER=me LOCAL_AUTH_PASS=hunter2
+```sh
+cat ~/.config/kube-coder/local-auth # print the generated password locally
+# Optional: explicitly change the password (do not put it in shell history).
+read -r -s LOCAL_AUTH_PASS && export LOCAL_AUTH_PASS  # enter a new value without echo (bash/zsh)
+make local-secret LOCAL_AUTH_USER=admin
+unset LOCAL_AUTH_PASS
 ```
+
+Keep the local basic-auth endpoint on loopback. HTTP Basic is not suitable for
+a publicly reachable, plaintext endpoint.
 
 ### Step 4 — `local-deploy`
 Installs the `base-infrastructure` chart (the `kaniko-wrapper` ConfigMap the
@@ -236,7 +243,7 @@ make local-down DELETE=1     # also delete the minikube profile entirely
 |---------|-----|
 | `ErrImageNeverPull` / `ImagePullBackOff` on `ws-local` | The image wasn't loaded. Re-run `make local-build` (it both builds and `minikube image load`s). |
 | `http://kube-coder.local:8080` won't resolve | Add the `/etc/hosts` line (`127.0.0.1 kube-coder.local`) and make sure `make local-forward` is running. |
-| 401 / auth prompt loops | Credentials are `admin` / `admin` (or whatever you set via `LOCAL_AUTH_*`). Re-run `make local-secret` if you changed them. |
+| 401 / auth prompt loops | Username defaults to `admin`; password is in `~/.config/kube-coder/local-auth` (or `LOCAL_AUTH_FILE`). Re-run `make local-secret` if you changed it. |
 | Pod stuck `ContainerCreating` | Usually the PVC or the `kaniko-wrapper` ConfigMap — confirm `make local-deploy` installed `base-infrastructure`. |
 | minikube won't start / OOMs | Raise Docker Desktop's memory, or lower it: `make local-up` then `minikube start -p kube-coder --memory=4g`. |
 
